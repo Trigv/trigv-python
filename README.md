@@ -72,6 +72,7 @@ Title, description, and image URL are delivered to devices but are **not** store
 | `title` | Yes | Notification title |
 | `description` | No | Body text (max 1000 characters) |
 | `image_url` | No | HTTPS image URL (max 2048 characters) |
+| `url` | No | Destination URL for the notification (max 2048 characters; not stored server-side) |
 | `level` | No | `info`, `success`, `warning`, or `error` (default: `info`) |
 | `delivery_urgency` | No | `standard` or `time_sensitive` (default: `standard`) |
 | `event_type` | No | Free-form label (e.g. `deploy.completed`) |

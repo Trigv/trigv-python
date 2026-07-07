@@ -67,6 +67,11 @@ def validate_send_event_params(params: SendEventParams | Mapping[str, object]) -
         _assert_max_length("image_url", image_url, FIELD_MAX_LENGTHS["image_url"])
         body["image_url"] = image_url
 
+    url = _trim(str(raw["url"]) if raw.get("url") is not None else None)
+    if url is not None:
+        _assert_max_length("url", url, FIELD_MAX_LENGTHS["url"])
+        body["url"] = url
+
     level = _trim(str(raw["level"]) if raw.get("level") is not None else None)
     if level is not None:
         _assert_enum("level", level, LEVELS)

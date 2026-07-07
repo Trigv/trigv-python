@@ -87,6 +87,7 @@ class TestTrigv:
                 "delivery_urgency": "standard",
                 "event_type": "deploy.completed",
                 "idempotency_key": "deploy-prod-42",
+                "url": "https://example.com/deployments/42",
             }
         )
 
@@ -98,6 +99,7 @@ class TestTrigv:
             "delivery_urgency": "standard",
             "event_type": "deploy.completed",
             "idempotency_key": "deploy-prod-42",
+            "url": "https://example.com/deployments/42",
         }
 
     def test_rejects_invalid_level_client_side(self) -> None:
@@ -299,3 +301,29 @@ class TestTrigv:
 
         assert calls["count"] == 2
         assert sleeps == [2.0]
+
+    def test_url_omitted_when_not_provided(self) -> None:
+        captured: dict[str, object] = {}
+
+        def handler(method, url, headers, body, timeout):
+            captured["body"] = json.loads(body.decode("utf-8"))
+            return HttpResponse(
+                status=202,
+                body=json.dumps({"event": SAMPLE_EVENT}),
+                headers={},
+            )
+
+        client = Trigv(api_key=API_KEY, transport=make_transport(handler), max_retries=0)
+        client.send_event({"channel": "general", "title": "x"})
+        assert "url" not in captured["body"]
+
+    def test_rejects_overlength_url(self) -> None:
+        client = Trigv(api_key=API_KEY, max_retries=0)
+        with pytest.raises(ValidationError):
+            client.send_event(
+                {
+                    "channel": "general",
+                    "title": "x",
+                    "url": "https://example.com/" + ("a" * 2040),
+                }
+            )

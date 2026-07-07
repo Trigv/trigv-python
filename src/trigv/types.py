@@ -16,6 +16,7 @@ class SendEventParams(TypedDict, total=False):
     title: str
     description: str
     image_url: str
+    url: str
     level: NotificationLevel
     delivery_urgency: DeliveryUrgency
     event_type: str
