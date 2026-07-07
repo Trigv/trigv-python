@@ -1,0 +1,61 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trigv"
+version = "1.0.0"
+description = "Official Trigv SDK for Python — send notification events to your workspace"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [{ name = "Trigv" }]
+keywords = ["trigv", "notifications", "push", "sdk"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Typing :: Typed",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://trigv.com"
+Repository = "https://github.com/Trigv/trigv-python"
+Documentation = "https://github.com/Trigv/trigv-python#readme"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/trigv"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/trigv", "README.md", "LICENSE"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+src = ["src", "tests", "examples"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311", "py312"]
+
+[project.optional-dependencies]
+dev = ["black>=24.0", "pytest>=8.0", "ruff>=0.8"]
+
+[dependency-groups]
+dev = [
+    "black>=24.0",
+    "pytest>=8.0",
+    "ruff>=0.8",
+]
