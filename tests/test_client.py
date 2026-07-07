@@ -7,7 +7,13 @@ import json
 import pytest
 
 from trigv import Trigv
-from trigv.errors import AuthenticationError, NotFoundError, RateLimitError, ValidationError
+from trigv.errors import (
+    ApiError,
+    AuthenticationError,
+    NotFoundError,
+    RateLimitError,
+    ValidationError,
+)
 from trigv.types import HttpResponse
 
 API_KEY = "trgv_testkey1_abcdefghijklmnopqrstuvwxyz123456"
@@ -243,3 +249,53 @@ class TestTrigv:
         client.send_event({"channel": "general", "title": "x"})
         headers = captured["headers"]
         assert str(headers["User-Agent"]).startswith("trigv-python/")
+
+    def test_rejects_negative_max_retries(self) -> None:
+        with pytest.raises(ValidationError):
+            Trigv(api_key=API_KEY, max_retries=-1)
+
+    def test_rejects_zero_timeout(self) -> None:
+        with pytest.raises(ValidationError):
+            Trigv(api_key=API_KEY, timeout=0)
+
+    def test_does_not_retry_post_without_idempotency_on_503(self) -> None:
+        calls = {"count": 0}
+
+        def handler(method, url, headers, body, timeout):
+            calls["count"] += 1
+            return HttpResponse(
+                status=503,
+                body=json.dumps({"message": "Service unavailable"}),
+                headers={},
+            )
+
+        client = Trigv(api_key=API_KEY, transport=make_transport(handler), max_retries=2)
+        with pytest.raises(ApiError):
+            client.send_event({"channel": "general", "title": "x"})
+        assert calls["count"] == 1
+
+    def test_retries_burst_429_with_retry_after(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        calls = {"count": 0}
+        sleeps: list[float] = []
+
+        def handler(method, url, headers, body, timeout):
+            calls["count"] += 1
+            if calls["count"] == 1:
+                return HttpResponse(
+                    status=429,
+                    body=json.dumps({"message": "Too many requests for this API key."}),
+                    headers={"retry-after": "2"},
+                )
+            return HttpResponse(
+                status=202,
+                body=json.dumps({"event": SAMPLE_EVENT}),
+                headers={},
+            )
+
+        monkeypatch.setattr("trigv.client.time.sleep", lambda seconds: sleeps.append(seconds))
+
+        client = Trigv(api_key=API_KEY, transport=make_transport(handler), max_retries=2)
+        client.send_event({"channel": "general", "title": "x", "idempotency_key": "k1"})
+
+        assert calls["count"] == 2
+        assert sleeps == [2.0]

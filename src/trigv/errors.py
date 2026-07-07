@@ -47,9 +47,15 @@ class RateLimitError(TrigvError):
 
     status_code = 429
 
-    def __init__(self, message: str, retryable: bool = True) -> None:
+    def __init__(
+        self,
+        message: str,
+        retryable: bool = True,
+        retry_after_seconds: float | None = None,
+    ) -> None:
         super().__init__(message)
         self.retryable = retryable
+        self.retry_after_seconds = retry_after_seconds
 
 
 class ApiError(TrigvError):

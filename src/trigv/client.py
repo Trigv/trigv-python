@@ -56,7 +56,11 @@ def _parse_json(text: str) -> dict[str, Any] | None:
     return parsed if isinstance(parsed, dict) else None
 
 
-def _error_from_response(status: int, body: dict[str, Any] | None) -> None:
+def _error_from_response(
+    status: int,
+    body: dict[str, Any] | None,
+    headers: dict[str, str] | None = None,
+) -> None:
     message = str(body.get("message")) if body and body.get("message") is not None else None
     if not message:
         message = f"Trigv API returned HTTP {status}"
@@ -79,7 +83,12 @@ def _error_from_response(status: int, body: dict[str, Any] | None) -> None:
                 normalized[str(field)] = [str(messages)]
         raise ValidationError(message, normalized)
     if status == 429:
-        raise RateLimitError(message, not is_monthly_limit_message(message))
+        from trigv.retry import parse_retry_after_header
+
+        retry_after = None
+        if headers is not None:
+            retry_after = parse_retry_after_header(headers.get("retry-after"))
+        raise RateLimitError(message, not is_monthly_limit_message(message), retry_after)
     raise ApiError(message, status, body)
 
 
@@ -136,6 +145,18 @@ class Trigv:
         resolved_key = api_key if api_key is not None else os.environ.get("TRIGV_API_KEY")
         if not resolved_key or not resolved_key.strip():
             raise ValidationError("api_key is required (or set TRIGV_API_KEY)")
+
+        if max_retries is not None and max_retries < 0:
+            raise ValidationError(
+                "max_retries must be zero or greater",
+                {"max_retries": ["max_retries must be zero or greater"]},
+            )
+
+        if timeout is not None and timeout <= 0:
+            raise ValidationError(
+                "timeout must be greater than zero",
+                {"timeout": ["timeout must be greater than zero"]},
+            )
 
         self._api_key = resolved_key.strip()
         self._base_url = (base_url or DEFAULT_BASE_URL).rstrip("/")
@@ -235,7 +256,9 @@ class Trigv:
                     raise
 
                 backoff = 0.5 * (2**attempt) + _jitter(250)
-                time.sleep(backoff)
+                if isinstance(error, RateLimitError) and error.retry_after_seconds is not None:
+                    backoff = error.retry_after_seconds
+                time.sleep(min(backoff, self._timeout))
 
         assert last_error is not None
         raise last_error
@@ -271,5 +294,5 @@ class Trigv:
         if 200 <= response.status < 300:
             return parse_success(response.status, parsed)
 
-        _error_from_response(response.status, parsed)
+        _error_from_response(response.status, parsed, response.headers)
         raise AssertionError("unreachable")
