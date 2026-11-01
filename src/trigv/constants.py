@@ -1,6 +1,6 @@
 """Shared constants for the Trigv Python SDK."""
 
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 
 DEFAULT_BASE_URL = "https://api.trigv.com"
 

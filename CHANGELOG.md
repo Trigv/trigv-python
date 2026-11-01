@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-11-01
+
+### Changed
+
+- Changed: README and package metadata link to trigv.com docs
+
 ## [1.1.0] - 2026-11-01
 
 ### Changed
@@ -15,7 +21,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Invalid JSON bodies return 422 and map to `ValidationError`.
 - `RateLimitError(message, retry_after_seconds)`. The old `(message, retryable, retry_after_seconds)` call style still works.
 - A `Retry-After` longer than the client `timeout` is not waited for: the 409, 429 or 503 error is raised at once.
-- Changed: README and package metadata link to trigv.com docs
 
 ### Added
 
