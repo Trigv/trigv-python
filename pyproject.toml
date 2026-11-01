@@ -24,8 +24,10 @@ dependencies = []
 
 [project.urls]
 Homepage = "https://trigv.com"
-Repository = "https://github.com/Trigv/trigv-python"
-Documentation = "https://github.com/Trigv/trigv-python#readme"
+Documentation = "https://trigv.com/docs/sdks/python/"
+Source = "https://github.com/Trigv/trigv-python"
+Issues = "https://github.com/Trigv/trigv-python/issues"
+Changelog = "https://github.com/Trigv/trigv-python/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/trigv"]

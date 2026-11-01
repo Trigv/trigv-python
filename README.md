@@ -1,5 +1,7 @@
 # Trigv Python SDK
 
+[Docs](https://trigv.com/docs/sdks/python/) | [API reference](https://trigv.com/docs/api/) | [Free tools](https://trigv.com/tools/) | [Get an API key](https://app.trigv.com/register)
+
 Official Python client for the [Trigv](https://trigv.com) workspace ingest API. Send push notification events from scripts, cron jobs, CI pipelines, and backend services.
 
 ## Installation
