@@ -117,6 +117,8 @@ if result.duplicate:
 - Retry with the same key → HTTP 200 (`already stored`), `duplicate=True`, no additional usage
 - 409 (another request is delivering the key) and 503 (push unavailable) are retried automatically with the same key, honouring `Retry-After`
 
+If `Retry-After` is longer than the client `timeout`, the SDK does not wait: it raises the 409, 429 or 503 error at once. 502 and 504 responses, network errors and timeouts are also retried (with an `idempotency_key`), and so is `verify_connection()`.
+
 Without an `idempotency_key`, the SDK does not auto-retry `send_event()` on ambiguous failures.
 
 ## Error handling

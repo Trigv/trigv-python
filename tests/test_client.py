@@ -463,3 +463,50 @@ class TestErrors:
         with pytest.raises(ConflictError):
             client.send_event({"channel": "general", "title": "x"})
         assert len(calls) == 1
+
+
+class TestRetryAfterCap:
+    @pytest.mark.parametrize("status", [409, 429, 503])
+    def test_retry_after_over_timeout_raises_without_sleeping(
+        self, status: int, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls: list[int] = []
+        sleeps: list[float] = []
+
+        def handler(method, url, hdrs, body, timeout):
+            calls.append(1)
+            return HttpResponse(
+                status=status,
+                body=json.dumps({"message": "slow down"}),
+                headers={"retry-after": "3600"},
+            )
+
+        monkeypatch.setattr("trigv.client.time.sleep", lambda s: sleeps.append(s))
+        client = Trigv(
+            api_key=API_KEY, transport=make_transport(handler), max_retries=2, timeout=30
+        )
+        with pytest.raises((ConflictError, RateLimitError, ServiceUnavailableError)) as exc:
+            client.send_event({"channel": "general", "title": "x", "idempotency_key": "k1"})
+        assert exc.value.retry_after_seconds == 3600.0
+        assert len(calls) == 1
+        assert sleeps == []
+
+
+class TestDeprecatedMembers:
+    def test_retryable_property_is_true(self) -> None:
+        assert RateLimitError("x").retryable is True
+
+    def test_old_positional_order_still_works(self) -> None:
+        error = RateLimitError("x", True, 7.0)
+        assert error.retry_after_seconds == 7.0
+        assert RateLimitError("x", False).retry_after_seconds is None
+
+    def test_new_styles_work(self) -> None:
+        assert RateLimitError("x", 5.0).retry_after_seconds == 5.0
+        assert RateLimitError("x", retry_after_seconds=5.0).retry_after_seconds == 5.0
+        assert RateLimitError("x", retryable=True).retry_after_seconds is None
+
+    def test_is_monthly_limit_message_returns_false(self) -> None:
+        from trigv import is_monthly_limit_message
+
+        assert is_monthly_limit_message("Monthly event limit reached") is False

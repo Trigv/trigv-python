@@ -19,6 +19,7 @@ from trigv.errors import (
     TimeoutError,
     TrigvError,
     ValidationError,
+    is_monthly_limit_message,
 )
 from trigv.types import (
     ConnectionApiKey,
@@ -56,6 +57,7 @@ __all__ = [
     "TrigvError",
     "ValidationError",
     "VERSION",
+    "is_monthly_limit_message",
 ]
 
 __version__ = VERSION

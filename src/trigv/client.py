@@ -266,6 +266,9 @@ class Trigv:
                 backoff = 0.5 * (2**attempt) + _jitter(250)
                 retry_after = getattr(error, "retry_after_seconds", None)
                 if retry_after is not None:
+                    # A wait longer than the timeout is not worth sleeping for: raise the real error.
+                    if retry_after > self._timeout:
+                        raise
                     backoff = retry_after
                 time.sleep(min(backoff, self._timeout))
 
