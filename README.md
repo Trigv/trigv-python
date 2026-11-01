@@ -61,6 +61,7 @@ print(result.event.public_id, result.event.status)
 
 - `event` — server metadata (`public_id`, `status`, `target_device_count`, etc.)
 - `duplicate` — `True` when the same `idempotency_key` was already accepted (HTTP 200)
+- `request_id` — the `X-Request-ID` response header, or `None` if the header is missing
 
 Title, description, and image URL are delivered to devices but are **not** stored server-side.
 
@@ -162,7 +163,7 @@ except (RateLimitError, ConflictError, ServiceUnavailableError) as exc:
 | `NetworkError` | Connection failure |
 | `TimeoutError` | Request timeout |
 
-Every API error has `request_id`, the `X-Request-ID` response header. Quote it to support.
+Every API error has `request_id`, the `X-Request-ID` response header. Successful results have it too (`result.request_id`, `None` if missing). Quote it to support.
 
 ## Configuration
 
@@ -185,6 +186,7 @@ Check that your API key is valid without sending an event or consuming usage:
 connection = trigv.verify_connection()
 print(connection.workspace.name)
 print(connection.api_key.prefix)
+print(connection.request_id)  # X-Request-ID, or None
 ```
 
 ## Examples

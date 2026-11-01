@@ -11,4 +11,4 @@ result = trigv.send_event(
     }
 )
 
-print(result.event.public_id)
+print(result.event.public_id, result.request_id)

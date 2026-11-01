@@ -54,6 +54,7 @@ class SendEventResult:
 
     event: Event
     duplicate: bool
+    request_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +86,7 @@ class ConnectionApiKey:
 class ConnectionResult:
     workspace: ConnectionWorkspace
     api_key: ConnectionApiKey
+    request_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

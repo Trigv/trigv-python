@@ -211,6 +211,49 @@ class TestTrigv:
         result = client.verify_connection()
         assert result.workspace.name == "Test"
 
+    def test_send_event_exposes_request_id(self) -> None:
+        def handler(method, url, headers, body, timeout):
+            return HttpResponse(
+                status=202,
+                body=json.dumps({"event": SAMPLE_EVENT}),
+                headers={"x-request-id": "req_abc123"},
+            )
+
+        client = Trigv(api_key=API_KEY, transport=make_transport(handler), max_retries=0)
+        result = client.send_event({"channel": "general", "title": "Hello"})
+        assert result.request_id == "req_abc123"
+
+    def test_send_event_request_id_is_none_when_header_missing(self) -> None:
+        def handler(method, url, headers, body, timeout):
+            return HttpResponse(
+                status=202,
+                body=json.dumps({"event": SAMPLE_EVENT}),
+                headers={},
+            )
+
+        client = Trigv(api_key=API_KEY, transport=make_transport(handler), max_retries=0)
+        result = client.send_event({"channel": "general", "title": "Hello"})
+        assert result.request_id is None
+
+    def test_verify_connection_exposes_request_id(self) -> None:
+        body = json.dumps(
+            {
+                "workspace": {"public_id": "ws_1", "name": "Test"},
+                "api_key": {"public_id": "key_1", "name": "Default", "prefix": "trgv_testkey1"},
+            }
+        )
+
+        def with_header(method, url, headers, payload, timeout):
+            return HttpResponse(status=200, body=body, headers={"x-request-id": "req_conn1"})
+
+        def without_header(method, url, headers, payload, timeout):
+            return HttpResponse(status=200, body=body, headers={})
+
+        present = Trigv(api_key=API_KEY, transport=make_transport(with_header), max_retries=0)
+        absent = Trigv(api_key=API_KEY, transport=make_transport(without_header), max_retries=0)
+        assert present.verify_connection().request_id == "req_conn1"
+        assert absent.verify_connection().request_id is None
+
     def test_does_not_expose_api_key_in_error_messages(self) -> None:
         def handler(method, url, headers, body, timeout):
             return HttpResponse(

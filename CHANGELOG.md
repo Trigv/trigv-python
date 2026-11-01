@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `ConflictError` (409) and `ServiceUnavailableError` (503), retried with `Retry-After` when an `idempotency_key` is set.
 - `request_id` on every API error (from the `X-Request-ID` header).
+- `request_id` on `SendEventResult` and `ConnectionResult` (`None` if the header is missing).
 
 ### Deprecated
 

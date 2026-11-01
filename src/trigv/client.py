@@ -184,11 +184,14 @@ class Trigv:
         body = validate_send_event_params(params)
         has_idempotency = bool(body.get("idempotency_key"))
 
-        def parse_success(status: int, parsed: dict[str, Any] | None) -> SendEventResult:
+        def parse_success(
+            status: int, parsed: dict[str, Any] | None, request_id: str | None
+        ) -> SendEventResult:
             if status in (200, 202) and parsed and isinstance(parsed.get("event"), dict):
                 return SendEventResult(
                     event=Event.from_dict(parsed["event"]),
                     duplicate=status == 200,
+                    request_id=request_id,
                 )
             _error_from_response(status, parsed)
             raise AssertionError("unreachable")
@@ -202,7 +205,9 @@ class Trigv:
         )
 
     def verify_connection(self) -> ConnectionResult:
-        def parse_success(status: int, parsed: dict[str, Any] | None) -> ConnectionResult:
+        def parse_success(
+            status: int, parsed: dict[str, Any] | None, request_id: str | None
+        ) -> ConnectionResult:
             if (
                 status == 200
                 and parsed
@@ -212,6 +217,7 @@ class Trigv:
                 return ConnectionResult(
                     workspace=ConnectionWorkspace.from_dict(parsed["workspace"]),
                     api_key=ConnectionApiKey.from_dict(parsed["api_key"]),
+                    request_id=request_id,
                 )
             _error_from_response(status, parsed)
             raise AssertionError("unreachable")
@@ -231,7 +237,7 @@ class Trigv:
         path: str,
         body: dict[str, str] | None,
         allow_retry: bool,
-        parse_success: Callable[[int, dict[str, Any] | None], T],
+        parse_success: Callable[[int, dict[str, Any] | None, str | None], T],
     ) -> T:
         last_error: BaseException | None = None
 
@@ -282,7 +288,7 @@ class Trigv:
         method: str,
         path: str,
         body: dict[str, str] | None,
-        parse_success: Callable[[int, dict[str, Any] | None], T],
+        parse_success: Callable[[int, dict[str, Any] | None, str | None], T],
     ) -> T:
         url = f"{self._base_url}{path}"
         headers = {
@@ -305,7 +311,7 @@ class Trigv:
         parsed = _parse_json(response.body)
 
         if 200 <= response.status < 300:
-            return parse_success(response.status, parsed)
+            return parse_success(response.status, parsed, response.headers.get("x-request-id"))
 
         _error_from_response(response.status, parsed, response.headers)
         raise AssertionError("unreachable")
