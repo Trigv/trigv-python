@@ -11,6 +11,8 @@ class TrigvError(Exception):
     def __init__(self, message: str) -> None:
         super().__init__(message)
         self.message = message
+        #: Value of the ``X-Request-ID`` response header, when the API answered.
+        self.request_id: str | None = None
 
     def __str__(self) -> str:
         return self.message
@@ -43,18 +45,32 @@ class NotFoundError(TrigvError):
 
 
 class RateLimitError(TrigvError):
-    """HTTP 429 — per-minute burst or monthly workspace cap."""
+    """HTTP 429 — 60 requests per minute per workspace. Honor ``retry_after_seconds``."""
 
     status_code = 429
 
-    def __init__(
-        self,
-        message: str,
-        retryable: bool = True,
-        retry_after_seconds: float | None = None,
-    ) -> None:
+    def __init__(self, message: str, retry_after_seconds: float | None = None) -> None:
         super().__init__(message)
-        self.retryable = retryable
+        self.retry_after_seconds = retry_after_seconds
+
+
+class ConflictError(TrigvError):
+    """HTTP 409 — another request is delivering the same idempotency key."""
+
+    status_code = 409
+
+    def __init__(self, message: str, retry_after_seconds: float | None = None) -> None:
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
+
+
+class ServiceUnavailableError(TrigvError):
+    """HTTP 503 — push delivery is unavailable. Retry with the same idempotency key."""
+
+    status_code = 503
+
+    def __init__(self, message: str, retry_after_seconds: float | None = None) -> None:
+        super().__init__(message)
         self.retry_after_seconds = retry_after_seconds
 
 
@@ -80,8 +96,3 @@ class TimeoutError(TrigvError):
 
     def __init__(self, message: str = "Request timed out") -> None:
         super().__init__(message)
-
-
-def is_monthly_limit_message(message: str) -> bool:
-    """Return True when a 429 message indicates the monthly workspace cap."""
-    return "Monthly event limit" in message

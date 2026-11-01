@@ -68,14 +68,14 @@ Title, description, and image URL are delivered to devices but are **not** store
 
 | Field | Required | Description |
 |-------|:--------:|-------------|
-| `channel` | Yes | Channel slug (e.g. `general`, `deploys`) |
-| `title` | Yes | Notification title |
+| `channel` | Yes | Channel slug (e.g. `general`, `deploys`; max 120 characters) |
+| `title` | Yes | Notification title (max 255 characters) |
 | `description` | No | Body text (max 1000 characters) |
-| `image_url` | No | HTTPS image URL (max 2048 characters) |
+| `image_url` | No | Image URL (max 2048 characters) |
 | `url` | No | Destination URL for the notification (max 2048 characters; not stored server-side) |
 | `level` | No | `info`, `success`, `warning`, or `error` (default: `info`) |
 | `delivery_urgency` | No | `standard` or `time_sensitive` (default: `standard`) |
-| `event_type` | No | Free-form label (e.g. `deploy.completed`) |
+| `event_type` | No | Free-form label (e.g. `deploy.completed`; max 120 characters) |
 | `idempotency_key` | No | Dedup key per workspace (max 190 characters) |
 
 Prohibited fields: `api_key` (use the `Authorization` header), `icon`.
@@ -114,7 +114,8 @@ if result.duplicate:
 ```
 
 - First request with a key → HTTP 202, `duplicate=False`, usage billed
-- Retry with the same key → HTTP 200, `duplicate=True`, no additional usage
+- Retry with the same key → HTTP 200 (`already stored`), `duplicate=True`, no additional usage
+- 409 (another request is delivering the key) and 503 (push unavailable) are retried automatically with the same key, honouring `Retry-After`
 
 Without an `idempotency_key`, the SDK does not auto-retry `send_event()` on ambiguous failures.
 
@@ -124,8 +125,10 @@ Without an `idempotency_key`, the SDK does not auto-retry `send_event()` on ambi
 from trigv import (
     AuthenticationError,
     AuthorizationError,
+    ConflictError,
     NotFoundError,
     RateLimitError,
+    ServiceUnavailableError,
     Trigv,
     ValidationError,
 )
@@ -140,11 +143,8 @@ except AuthenticationError:
     print("Check your API key")
 except NotFoundError:
     print("Channel does not exist")
-except RateLimitError as exc:
-    if exc.retryable:
-        print("Per-minute limit — retry shortly")
-    else:
-        print("Monthly workspace cap reached")
+except (RateLimitError, ConflictError, ServiceUnavailableError) as exc:
+    print(f"Retry in {exc.retry_after_seconds}s (request id {exc.request_id})")
 ```
 
 | Exception | When |
@@ -153,8 +153,13 @@ except RateLimitError as exc:
 | `AuthenticationError` | HTTP 401 |
 | `AuthorizationError` | HTTP 403 |
 | `NotFoundError` | HTTP 404 (e.g. unknown channel) |
-| `RateLimitError` | HTTP 429 (`retryable` distinguishes burst vs monthly cap) |
+| `ConflictError` | HTTP 409 (same `idempotency_key` is being delivered); has `retry_after_seconds` |
+| `RateLimitError` | HTTP 429, 60 requests per minute per workspace; has `retry_after_seconds` |
+| `ServiceUnavailableError` | HTTP 503 (push unavailable); has `retry_after_seconds` |
 | `ApiError` | Other HTTP errors |
+
+Every API error has `request_id`, the `X-Request-ID` response header. Quote it to support.
+
 | `NetworkError` | Connection failure |
 | `TimeoutError` | Request timeout |
 
@@ -163,17 +168,13 @@ except RateLimitError as exc:
 ```python
 trigv = Trigv(
     api_key="trgv_your_api_key",
-    base_url="https://api.trigv.com/api",  # default
+    base_url="https://api.trigv.com",      # default; a URL ending in /api still works
     timeout=30.0,                          # seconds
     max_retries=2,                         # retryable errors only
 )
 ```
 
-For local development with [Laravel Herd](https://herd.laravel.com):
-
-```python
-trigv = Trigv(base_url="http://trigv-platform.test/api")
-```
+The older `/api` prefix is kept for good: `base_url="https://api.trigv.com/api"` calls `/api/v1/events`.
 
 ### Verify connection
 

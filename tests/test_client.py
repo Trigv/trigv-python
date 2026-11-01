@@ -8,10 +8,11 @@ import pytest
 
 from trigv import Trigv
 from trigv.errors import (
-    ApiError,
     AuthenticationError,
+    ConflictError,
     NotFoundError,
     RateLimitError,
+    ServiceUnavailableError,
     ValidationError,
 )
 from trigv.types import HttpResponse
@@ -19,9 +20,9 @@ from trigv.types import HttpResponse
 API_KEY = "trgv_testkey1_abcdefghijklmnopqrstuvwxyz123456"
 
 SAMPLE_EVENT = {
-    "public_id": "evt_abc",
+    "public_id": "01JXXXXXXXXXXXXXXXXXXXXXXX",
     "event_uuid": "550e8400-e29b-41d4-a716-446655440000",
-    "status": "queued",
+    "status": "sent",
     "level": "info",
     "event_type": None,
     "target_device_count": 1,
@@ -64,7 +65,7 @@ class TestTrigv:
         assert headers["Authorization"] == f"Bearer {API_KEY}"
         assert headers["Accept"] == "application/json"
         assert result.duplicate is False
-        assert result.event.public_id == "evt_abc"
+        assert result.event.public_id == "01JXXXXXXXXXXXXXXXXXXXXXXX"
 
     def test_sends_all_optional_fields(self) -> None:
         captured: dict[str, object] = {}
@@ -158,19 +159,6 @@ class TestTrigv:
         with pytest.raises(NotFoundError):
             client.send_event({"channel": "missing", "title": "x"})
 
-    def test_monthly_rate_limit_is_non_retryable(self) -> None:
-        def handler(method, url, headers, body, timeout):
-            return HttpResponse(
-                status=429,
-                body=json.dumps({"message": "Monthly event limit reached for this workspace."}),
-                headers={},
-            )
-
-        client = Trigv(api_key=API_KEY, transport=make_transport(handler), max_retries=2)
-        with pytest.raises(RateLimitError) as exc_info:
-            client.send_event({"channel": "general", "title": "x"})
-        assert exc_info.value.retryable is False
-
     def test_retries_burst_rate_limit_with_idempotency_key(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -197,7 +185,7 @@ class TestTrigv:
         result = client.send_event({"channel": "general", "title": "x", "idempotency_key": "k1"})
 
         assert calls["count"] == 2
-        assert result.event.public_id == "evt_abc"
+        assert result.event.public_id == "01JXXXXXXXXXXXXXXXXXXXXXXX"
         assert len(sleeps) == 1
 
     def test_verify_connection_returns_metadata(self) -> None:
@@ -272,7 +260,7 @@ class TestTrigv:
             )
 
         client = Trigv(api_key=API_KEY, transport=make_transport(handler), max_retries=2)
-        with pytest.raises(ApiError):
+        with pytest.raises(ServiceUnavailableError):
             client.send_event({"channel": "general", "title": "x"})
         assert calls["count"] == 1
 
@@ -327,3 +315,151 @@ class TestTrigv:
                     "url": "https://example.com/" + ("a" * 2040),
                 }
             )
+
+
+def _ok(**_kwargs):
+    return HttpResponse(status=202, body=json.dumps({"event": SAMPLE_EVENT}), headers={})
+
+
+class TestBaseUrl:
+    def test_default_base_url(self) -> None:
+        urls: list[str] = []
+
+        def handler(method, url, headers, body, timeout):
+            urls.append(url)
+            return _ok()
+
+        Trigv(api_key=API_KEY, transport=make_transport(handler)).send_event(
+            {"channel": "general", "title": "x"}
+        )
+        assert urls == ["https://api.trigv.com/v1/events"]
+
+    def test_old_api_base_url_still_works(self) -> None:
+        urls: list[str] = []
+
+        def handler(method, url, headers, body, timeout):
+            urls.append(url)
+            return _ok()
+
+        Trigv(
+            api_key=API_KEY,
+            base_url="https://api.trigv.com/api/",
+            transport=make_transport(handler),
+        ).send_event({"channel": "general", "title": "x"})
+        assert urls == ["https://api.trigv.com/api/v1/events"]
+
+    def test_connection_path(self) -> None:
+        urls: list[str] = []
+
+        def handler(method, url, headers, body, timeout):
+            urls.append(url)
+            return HttpResponse(
+                status=200,
+                body=json.dumps(
+                    {
+                        "workspace": {"public_id": "01JXXXXXXXXXXXXXXXXXXXXXXX", "name": "Acme"},
+                        "api_key": {
+                            "public_id": "01JXXXXXXXXXXXXXXXXXXXXXXX",
+                            "name": "Prod",
+                            "prefix": "trgv_abcd1234",
+                        },
+                    }
+                ),
+                headers={},
+            )
+
+        Trigv(api_key=API_KEY, transport=make_transport(handler)).verify_connection()
+        assert urls == ["https://api.trigv.com/v1/connection"]
+
+
+class TestErrors:
+    HEADERS = {"retry-after": "7", "x-request-id": "01JREQXXXXXXXXXXXXXXXXXXXX"}
+
+    def _client(self, status: int, headers=None, max_retries: int = 0) -> Trigv:
+        def handler(method, url, hdrs, body, timeout):
+            return HttpResponse(
+                status=status,
+                body=json.dumps({"message": "nope"}),
+                headers=headers if headers is not None else self.HEADERS,
+            )
+
+        return Trigv(api_key=API_KEY, transport=make_transport(handler), max_retries=max_retries)
+
+    def test_409_conflict(self) -> None:
+        with pytest.raises(ConflictError) as exc:
+            self._client(409).send_event({"channel": "general", "title": "x"})
+        assert exc.value.retry_after_seconds == 7.0
+        assert exc.value.request_id == "01JREQXXXXXXXXXXXXXXXXXXXX"
+
+    def test_503_unavailable(self) -> None:
+        with pytest.raises(ServiceUnavailableError) as exc:
+            self._client(503).send_event({"channel": "general", "title": "x"})
+        assert exc.value.retry_after_seconds == 7.0
+
+    def test_429_retry_after(self) -> None:
+        with pytest.raises(RateLimitError) as exc:
+            self._client(429).send_event({"channel": "general", "title": "x"})
+        assert exc.value.retry_after_seconds == 7.0
+        assert exc.value.request_id == "01JREQXXXXXXXXXXXXXXXXXXXX"
+
+    def test_422_validation_error(self) -> None:
+        def handler(method, url, hdrs, body, timeout):
+            return HttpResponse(
+                status=422,
+                body=json.dumps(
+                    {"message": "The channel field is required.", "errors": {"channel": ["x"]}}
+                ),
+                headers={},
+            )
+
+        client = Trigv(api_key=API_KEY, transport=make_transport(handler), max_retries=2)
+        with pytest.raises(ValidationError) as exc:
+            client.send_event({"channel": "general", "title": "x"})
+        assert exc.value.errors == {"channel": ["x"]}
+
+    def test_200_already_stored_is_duplicate(self) -> None:
+        def handler(method, url, hdrs, body, timeout):
+            return HttpResponse(
+                status=200,
+                body=json.dumps({"event": SAMPLE_EVENT, "message": "already stored"}),
+                headers={},
+            )
+
+        client = Trigv(api_key=API_KEY, transport=make_transport(handler), max_retries=0)
+        result = client.send_event({"channel": "general", "title": "x", "idempotency_key": "k"})
+        assert result.duplicate is True
+
+    @pytest.mark.parametrize("status", [409, 503])
+    def test_retries_with_same_key_after_retry_after(
+        self, status: int, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        bodies: list[bytes] = []
+        sleeps: list[float] = []
+
+        def handler(method, url, hdrs, body, timeout):
+            bodies.append(body)
+            if len(bodies) == 1:
+                return HttpResponse(
+                    status=status,
+                    body=json.dumps({"message": "retry"}),
+                    headers={"retry-after": "3"},
+                )
+            return _ok()
+
+        monkeypatch.setattr("trigv.client.time.sleep", lambda s: sleeps.append(s))
+        client = Trigv(api_key=API_KEY, transport=make_transport(handler), max_retries=2)
+        client.send_event({"channel": "general", "title": "x", "idempotency_key": "k1"})
+        assert len(bodies) == 2 and bodies[0] == bodies[1]
+        assert sleeps == [3.0]
+
+    def test_409_not_retried_without_key(self) -> None:
+        calls: list[int] = []
+
+        def handler(method, url, hdrs, body, timeout):
+            calls.append(1)
+            return HttpResponse(status=409, body="{}", headers={})
+
+        client = Trigv(api_key=API_KEY, transport=make_transport(handler), max_retries=2)
+        with pytest.raises(ConflictError):
+            client.send_event({"channel": "general", "title": "x"})
+        assert len(calls) == 1

@@ -1,8 +1,8 @@
 """Shared constants for the Trigv Python SDK."""
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
-DEFAULT_BASE_URL = "https://api.trigv.com/api"
+DEFAULT_BASE_URL = "https://api.trigv.com"
 
 DEFAULT_TIMEOUT_SECONDS = 30.0
 

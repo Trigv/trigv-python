@@ -29,22 +29,22 @@ class Event:
 
     public_id: str
     event_uuid: str
-    status: str
-    level: str
+    status: Literal["pending", "sent", "failed"]
+    level: NotificationLevel
     event_type: str | None
     target_device_count: int
-    received_at: str
+    received_at: str | None
 
     @classmethod
     def from_dict(cls, data: dict[str, object]) -> Event:
         return cls(
             public_id=str(data["public_id"]),
             event_uuid=str(data["event_uuid"]),
-            status=str(data["status"]),
-            level=str(data["level"]),
+            status=data["status"],  # type: ignore[arg-type]
+            level=data["level"],  # type: ignore[arg-type]
             event_type=data.get("event_type") if data.get("event_type") is not None else None,
             target_device_count=int(data["target_device_count"]),  # type: ignore[arg-type]
-            received_at=str(data["received_at"]),
+            received_at=str(data["received_at"]) if data.get("received_at") is not None else None,
         )
 
 

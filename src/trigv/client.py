@@ -18,16 +18,18 @@ from trigv.errors import (
     ApiError,
     AuthenticationError,
     AuthorizationError,
+    ConflictError,
     NetworkError,
     NotFoundError,
     RateLimitError,
+    ServiceUnavailableError,
     TrigvError,
     ValidationError,
-    is_monthly_limit_message,
 )
 from trigv.errors import (
     TimeoutError as TrigvTimeoutError,
 )
+from trigv.retry import parse_retry_after_header
 from trigv.types import (
     ConnectionApiKey,
     ConnectionResult,
@@ -43,7 +45,7 @@ T = TypeVar("T")
 
 HttpTransport = Callable[[str, str, dict[str, str], bytes | None, float], HttpResponse]
 
-_RETRYABLE_STATUSES = {429, 502, 503, 504}
+_RETRYABLE_STATUSES = {502, 504}
 
 
 def _parse_json(text: str) -> dict[str, Any] | None:
@@ -65,13 +67,22 @@ def _error_from_response(
     if not message:
         message = f"Trigv API returned HTTP {status}"
 
+    retry_after = None
+    request_id = None
+    if headers is not None:
+        retry_after = parse_retry_after_header(headers.get("retry-after"))
+        request_id = headers.get("x-request-id")
+
+    error: TrigvError
     if status == 401:
-        raise AuthenticationError(message)
-    if status == 403:
-        raise AuthorizationError(message)
-    if status == 404:
-        raise NotFoundError(message)
-    if status == 422:
+        error = AuthenticationError(message)
+    elif status == 403:
+        error = AuthorizationError(message)
+    elif status == 404:
+        error = NotFoundError(message)
+    elif status == 409:
+        error = ConflictError(message, retry_after)
+    elif status == 422:
         errors = body.get("errors") if body else None
         if not isinstance(errors, dict):
             errors = {}
@@ -81,15 +92,15 @@ def _error_from_response(
                 normalized[str(field)] = [str(item) for item in messages]
             else:
                 normalized[str(field)] = [str(messages)]
-        raise ValidationError(message, normalized)
-    if status == 429:
-        from trigv.retry import parse_retry_after_header
-
-        retry_after = None
-        if headers is not None:
-            retry_after = parse_retry_after_header(headers.get("retry-after"))
-        raise RateLimitError(message, not is_monthly_limit_message(message), retry_after)
-    raise ApiError(message, status, body)
+        error = ValidationError(message, normalized)
+    elif status == 429:
+        error = RateLimitError(message, retry_after)
+    elif status == 503:
+        error = ServiceUnavailableError(message, retry_after)
+    else:
+        error = ApiError(message, status, body)
+    error.request_id = request_id
+    raise error
 
 
 def _is_retryable_status(status: int) -> bool:
@@ -237,27 +248,25 @@ class Trigv:
                 if not allow_retry or attempt >= self._max_retries:
                     raise
 
-                if isinstance(
+                if isinstance(error, ApiError):
+                    if not _is_retryable_status(error.status_code):
+                        raise
+                elif not isinstance(
                     error,
-                    (ValidationError, AuthenticationError, AuthorizationError, NotFoundError),
-                ):
-                    raise
-
-                if isinstance(error, RateLimitError) and not error.retryable:
-                    raise
-
-                if isinstance(error, ApiError) and not _is_retryable_status(error.status_code):
-                    raise
-
-                if not isinstance(
-                    error,
-                    (NetworkError, TrigvTimeoutError, RateLimitError, ApiError),
+                    (
+                        NetworkError,
+                        TrigvTimeoutError,
+                        RateLimitError,
+                        ConflictError,
+                        ServiceUnavailableError,
+                    ),
                 ):
                     raise
 
                 backoff = 0.5 * (2**attempt) + _jitter(250)
-                if isinstance(error, RateLimitError) and error.retry_after_seconds is not None:
-                    backoff = error.retry_after_seconds
+                retry_after = getattr(error, "retry_after_seconds", None)
+                if retry_after is not None:
+                    backoff = retry_after
                 time.sleep(min(backoff, self._timeout))
 
         assert last_error is not None
