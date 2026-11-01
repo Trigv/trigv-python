@@ -159,11 +159,10 @@ except (RateLimitError, ConflictError, ServiceUnavailableError) as exc:
 | `RateLimitError` | HTTP 429, 60 requests per minute per workspace; has `retry_after_seconds` |
 | `ServiceUnavailableError` | HTTP 503 (push unavailable); has `retry_after_seconds` |
 | `ApiError` | Other HTTP errors |
-
-Every API error has `request_id`, the `X-Request-ID` response header. Quote it to support.
-
 | `NetworkError` | Connection failure |
 | `TimeoutError` | Request timeout |
+
+Every API error has `request_id`, the `X-Request-ID` response header. Quote it to support.
 
 ## Configuration
 

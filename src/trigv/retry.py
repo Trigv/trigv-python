@@ -14,11 +14,15 @@ def parse_retry_after_header(value: str | None, now: float | None = None) -> flo
 
     trimmed = value.strip()
 
-    if trimmed.isdigit():
-        seconds = int(trimmed)
-        if seconds < 0:
+    # Only ASCII digits count: str.isdigit() also accepts characters such as "²" that int() rejects.
+    if trimmed.isascii() and trimmed.isdigit():
+        try:
+            return float(int(trimmed))
+        except OverflowError:
+            return float("inf")
+        except ValueError:
+            # Digit string longer than Python's int conversion limit: nonsense, ignore it.
             return None
-        return float(seconds)
 
     try:
         retry_at = parsedate_to_datetime(trimmed)

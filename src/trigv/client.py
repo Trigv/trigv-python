@@ -121,7 +121,7 @@ def _default_transport(
     request = urllib.request.Request(url=url, data=body, headers=headers, method=method)
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            response_body = response.read().decode("utf-8")
+            response_body = response.read().decode("utf-8", errors="replace")
             response_headers = {key.lower(): value for key, value in response.headers.items()}
             return HttpResponse(
                 status=response.status,
@@ -129,8 +129,9 @@ def _default_transport(
                 headers=response_headers,
             )
     except urllib.error.HTTPError as exc:
-        response_body = exc.read().decode("utf-8", errors="replace")
-        response_headers = {key.lower(): value for key, value in exc.headers.items()}
+        with exc:
+            response_body = exc.read().decode("utf-8", errors="replace")
+            response_headers = {key.lower(): value for key, value in exc.headers.items()}
         return HttpResponse(status=exc.code, body=response_body, headers=response_headers)
     except (builtins.TimeoutError, socket.timeout) as exc:  # noqa: UP041
         raise TrigvTimeoutError() from exc
@@ -266,7 +267,7 @@ class Trigv:
                 backoff = 0.5 * (2**attempt) + _jitter(250)
                 retry_after = getattr(error, "retry_after_seconds", None)
                 if retry_after is not None:
-                    # A wait longer than the timeout is not worth sleeping for: raise the real error.
+                    # Waiting longer than the timeout is pointless: raise the real error.
                     if retry_after > self._timeout:
                         raise
                     backoff = retry_after

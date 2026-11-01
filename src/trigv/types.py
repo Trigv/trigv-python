@@ -42,8 +42,8 @@ class Event:
             event_uuid=str(data["event_uuid"]),
             status=data["status"],  # type: ignore[arg-type]
             level=data["level"],  # type: ignore[arg-type]
-            event_type=data.get("event_type") if data.get("event_type") is not None else None,
-            target_device_count=int(data["target_device_count"]),  # type: ignore[arg-type]
+            event_type=str(data["event_type"]) if data.get("event_type") is not None else None,
+            target_device_count=int(data["target_device_count"]),  # type: ignore[call-overload]
             received_at=str(data["received_at"]) if data.get("received_at") is not None else None,
         )
 
